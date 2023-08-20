@@ -153,6 +153,7 @@ func (servss *Server) handleHttpRequest(conn net.Conn) {
 	requestLine, err := utils.ReadOneLine(reader)
 	if err != nil {
 		log.Println("无法读取请求:", err)
+		conn.Write([]byte("HTTP/1.1 200 OK\n\n target service invalid\r\n"))
 		return
 	}
 
@@ -160,6 +161,7 @@ func (servss *Server) handleHttpRequest(conn net.Conn) {
 	parts := strings.Split(requestLine, " ")
 	if len(parts) < 3 {
 		log.Println("无效的请求行:", requestLine)
+		conn.Write([]byte("HTTP/1.1 200 OK\n\n target service invalid\r\n"))
 		return
 	}
 	method := parts[0]
@@ -167,7 +169,7 @@ func (servss *Server) handleHttpRequest(conn net.Conn) {
 
 	fmt.Println("request :", method, path)
 
-	cache := []byte(fmt.Sprintf("%s %s %s\r\n"))
+	cache := []byte(fmt.Sprintf("%s %s %s\r\n", method, path, parts[2]))
 	// 解析请求头部
 	headers := make(map[string]string)
 	for {
@@ -200,8 +202,9 @@ func (servss *Server) handleHttpRequest(conn net.Conn) {
 	fmt.Println("create stream...", host)
 	<-newstream.Ready
 	fmt.Println("create stream ok..for host.", host)
-
+	fmt.Println(string(cache))
 	newstream.Write(cache)
+	newstream.Write([]byte("\r\n"))
 	err = tunnel.Relay(conn, newstream)
 	if err != nil {
 		servss.logger.Errorf("stream err:%s\n", err.Error())

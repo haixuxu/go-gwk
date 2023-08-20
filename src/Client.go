@@ -74,6 +74,8 @@ func (cli *Client) handleStream(worker *tunnel.TunnelStub, tunopts *TunnelConfig
 	err = tunnel.Relay(tsocket, stream)
 	if err != nil {
 		cli.logger.Errorf("stream err:%s\n", err.Error())
+	} else {
+		cli.logger.Infof("stream close====>", stream.Cid)
 	}
 }
 
