@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -6,9 +5,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	gwk "github/xuxihai123/go-gwk/v1/src"
+	"github/xuxihai123/go-gwk/v1/src/types"
 	"os"
 )
-
 
 var cfgFile string
 
@@ -18,15 +17,15 @@ var RootCmd = &cobra.Command{
 
 		fmt.Printf("start gwkd server.\n")
 
-		servopts := &gwk.ServerOpts{
+		servopts := &types.ServerOpts{
 			ServerHost: viper.GetString("serverHost"),
 			TunnelAddr: viper.GetInt("tunnelAddr"),
 			LogLevel:   viper.GetString("logLevel"),
-			HttpAddr:     viper.GetInt("httpAddr"),
-			HttpsAddr:     viper.GetInt("httpsAddr"),
-			TlsCA: viper.GetString("tlsCA"),
-			TlsCrt: viper.GetString("tlsCrt"),
-			TlsKey: viper.GetString("tlsKey"),
+			HttpAddr:   viper.GetInt("httpAddr"),
+			HttpsAddr:  viper.GetInt("httpsAddr"),
+			TlsCA:      viper.GetString("tlsCA"),
+			TlsCrt:     viper.GetString("tlsCrt"),
+			TlsKey:     viper.GetString("tlsKey"),
 		}
 		svr := gwk.NewServer(servopts)
 		svr.Bootstrap()
@@ -60,7 +59,6 @@ func initConfig() {
 		os.Exit(1)
 	}
 }
-
 
 func main() {
 	if err := RootCmd.Execute(); err != nil {

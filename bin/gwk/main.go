@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -6,9 +5,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	gwk "github/xuxihai123/go-gwk/v1/src"
+	"github/xuxihai123/go-gwk/v1/src/types"
 	"os"
 )
-
 
 var cfgFile string
 
@@ -18,39 +17,39 @@ var RootCmd = &cobra.Command{
 
 		fmt.Printf("start gwk client.\n")
 
-		cliopts := &gwk.ClientOpts{
+		cliopts := &types.ClientOpts{
 			LogLevel:   viper.GetString("logLevel"),
-			TunnelHost:     viper.GetString("tunnelHost"),
-			TunnelAddr:     viper.GetInt("tunnelAddr"),
-			Tunnels:nil,
+			TunnelHost: viper.GetString("tunnelHost"),
+			TunnelAddr: viper.GetInt("tunnelAddr"),
+			Tunnels:    nil,
 		}
 
-		tunnels :=viper.Get("tunnels").(map[string]interface{})
+		tunnels := viper.Get("tunnels").(map[string]interface{})
 
-		 tunnelDict:=make(map[string]gwk.TunnelConfig)
+		tunnelDict := make(map[string]types.TunnelOpts)
 		for key, value := range tunnels {
 
-			tun :=value.(map[string]interface{})
-			tunobj :=gwk.TunnelConfig{}
+			tun := value.(map[string]interface{})
+			tunobj := types.TunnelOpts{}
 			tunobj.Name = key
-			for key2,value2 :=range  tun{
-				if key2 =="protocol"{
-					tunobj.Protocol=value2.(string)
+			for key2, value2 := range tun {
+				if key2 == "type" {
+					tunobj.Type = value2.(string)
 				}
-				if key2=="localport"{
-					tunobj.LocalPort=int(value2.(float64))
+				if key2 == "localport" {
+					tunobj.LocalPort = int(value2.(float64))
 				}
-				if key2 == "subdomain"{
-					tunobj.Subdomain=value2.(string)
+				if key2 == "subdomain" {
+					tunobj.Subdomain = value2.(string)
 				}
 
-				if key2 == "remoteport"{
-					tunobj.RemotePort=int(value2.(float64))
+				if key2 == "remoteport" {
+					tunobj.RemotePort = int(value2.(float64))
 				}
 			}
-			tunnelDict[key]=tunobj
+			tunnelDict[key] = tunobj
 		}
-		cliopts.Tunnels=tunnelDict
+		cliopts.Tunnels = tunnelDict
 
 		cli := gwk.NewClient(cliopts)
 		cli.Bootstrap()
@@ -84,7 +83,6 @@ func initConfig() {
 		os.Exit(1)
 	}
 }
-
 
 func main() {
 	if err := RootCmd.Execute(); err != nil {

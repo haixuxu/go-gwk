@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-
-
 const (
 	AUTH_REQ = 0x0 // start auth
 	AUTH_RES = 0x1 // auth response
@@ -75,19 +73,17 @@ const (
  * @returns
  */
 
-
-
 type Frame struct {
-	Type uint8
+	Type   uint8
 	Token  string
 	Status uint8
-	Stime string
-	Atime string
+	Stime  string
+	Atime  string
 	// tunnel req/res
-	Protocol uint8
-	Port     uint16
+	TunType   uint8
+	Port      uint16
 	Subdomain string
-	Name     string
+	Name      string
 
 	Message string
 
@@ -95,41 +91,41 @@ type Frame struct {
 	Data     []byte
 }
 
-func Encode(frame *Frame)[]byte   {
-	if frame.Type== AUTH_REQ||frame.Type==AUTH_RES{
+func Encode(frame *Frame) []byte {
+	if frame.Type == AUTH_REQ || frame.Type == AUTH_RES {
 		prefix := []byte{frame.Type, frame.Status}
 		token := []byte(frame.Token)
 		return append(prefix, token...)
-	}else if frame.Type==TUNNEL_REQ{
+	} else if frame.Type == TUNNEL_REQ {
 
 		var message string
-		if frame.Protocol == 0x1 {
+		if frame.TunType == 0x1 {
 			message = fmt.Sprintf("%s:%d", frame.Name, frame.Port)
 		} else {
 			message = fmt.Sprintf("%s:%s", frame.Name, frame.Subdomain)
 		}
 
-		prefix := []byte{frame.Type, frame.Protocol}
+		prefix := []byte{frame.Type, frame.TunType}
 
 		return append(prefix, []byte(message)...)
-	}else if frame.Type==TUNNEL_RES{
-		prefix := []byte{frame.Type,frame.Status}
+	} else if frame.Type == TUNNEL_RES {
+		prefix := []byte{frame.Type, frame.Status}
 
 		messageBuf := []byte(frame.Message)
 		return append(prefix, messageBuf...)
-	} else if frame.Type==PING_FRAME{
+	} else if frame.Type == PING_FRAME {
 		prefix := []byte{frame.Type}
 		stime := []byte(frame.Stime)
 		return append(prefix, stime...)
 
-	}else if frame.Type==PONG_FRAME{
+	} else if frame.Type == PONG_FRAME {
 		prefix := []byte{frame.Type}
 		stime := []byte(frame.Stime)
 		atime := []byte(frame.Atime)
 		return append(append(prefix, stime...), atime...)
-	}else{
+	} else {
 		prefix := []byte{frame.Type}
-		cidbuf,_ :=hex.DecodeString(frame.StreamID)
+		cidbuf, _ := hex.DecodeString(frame.StreamID)
 		buf := append(prefix, cidbuf...)
 		if frame.Data == nil {
 			return buf
@@ -138,7 +134,6 @@ func Encode(frame *Frame)[]byte   {
 		}
 	}
 }
-
 
 func Decode(data []byte) (frame *Frame, err error) {
 	typeVal := data[0]
@@ -149,15 +144,15 @@ func Decode(data []byte) (frame *Frame, err error) {
 		if typeVal == AUTH_RES {
 			status = data[1]
 		}
-		return &Frame{Type:typeVal,Status:status,Token:token},nil
+		return &Frame{Type: typeVal, Status: status, Token: token}, nil
 	} else if typeVal == PING_FRAME {
 		stime := string(data[1:14])
 
-		return &Frame{Type:typeVal,Stime:stime},nil
+		return &Frame{Type: typeVal, Stime: stime}, nil
 	} else if typeVal == PONG_FRAME {
 		stime := string(data[1:14])
 		atime := string(data[14:27])
-		return &Frame{Type:typeVal,Stime:stime,Atime:atime},nil
+		return &Frame{Type: typeVal, Stime: stime, Atime: atime}, nil
 	} else if typeVal == TUNNEL_REQ {
 		proto := data[1]
 		message := string(data[2:])
@@ -168,24 +163,21 @@ func Decode(data []byte) (frame *Frame, err error) {
 			num, err := strconv.ParseUint(parts[1], 10, 16)
 			if err != nil {
 				fmt.Println("无法转换为 uint16")
-				return nil,errors.New("无法转换为 uint16")
+				return nil, errors.New("无法转换为 uint16")
 			}
 			uint16Val := uint16(num)
 			port = uint16Val
 		} else {
 			subdomain = parts[1]
 		}
-		fmt.Printf("proto: %d   %s\n",proto,message)
-		return &Frame{Type:typeVal,Protocol:proto,Port:port,Subdomain:subdomain},nil
+		return &Frame{Type: typeVal, Name: parts[0], TunType: proto, Port: port, Subdomain: subdomain}, nil
 	} else if typeVal == TUNNEL_RES {
 		status := data[1]
 		message := string(data[2:])
-		return &Frame{Type:typeVal,Status:status,Message:message},nil
+		return &Frame{Type: typeVal, Status: status, Message: message}, nil
 	} else {
 		streamID := hex.EncodeToString(data[1:17])
 		dataBuf := data[17:]
-		return &Frame{Type:typeVal,StreamID:streamID,Data:dataBuf},nil
+		return &Frame{Type: typeVal, StreamID: streamID, Data: dataBuf}, nil
 	}
 }
-
-

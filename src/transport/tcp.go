@@ -1,12 +1,10 @@
-
 package transport
 
 import (
-"fmt"
-"net"
-"time"
+	"fmt"
+	"net"
+	"time"
 )
-
 
 func SendStreamSocket(socket net.Conn, data []byte) (err error) {
 	length := len(data)
@@ -46,7 +44,6 @@ func (ts *TcpTransport) ReadPacket() ([]byte, error) {
 func NewTcpTransport(host, port string) (transport *TcpTransport, err error) {
 	remoteAddr := fmt.Sprintf("%s:%s", host, port)
 
-	println(remoteAddr)
 	tSocket, err := net.DialTimeout("tcp", remoteAddr, time.Second*10)
 	if err != nil {
 		return nil, err
@@ -56,7 +53,7 @@ func NewTcpTransport(host, port string) (transport *TcpTransport, err error) {
 	return ts, nil
 }
 
-func WrapConn(conn net.Conn) *TcpTransport  {
+func WrapConn(conn net.Conn) *TcpTransport {
 	ts := &TcpTransport{conn: conn}
 	return ts
 }

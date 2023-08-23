@@ -2,124 +2,144 @@ package gwk
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"github.com/bbk47/toolbox"
-	"github/xuxihai123/go-gwk/v1/src/auth"
-	"github/xuxihai123/go-gwk/v1/src/protocol"
 	"github/xuxihai123/go-gwk/v1/src/transport"
 	"github/xuxihai123/go-gwk/v1/src/tunnel"
+	. "github/xuxihai123/go-gwk/v1/src/types"
 	"github/xuxihai123/go-gwk/v1/src/utils"
-	"io"
 	"log"
 	"net"
 	"regexp"
-	"strings"
 	"sync"
 )
 
+type ConnectObj struct {
+	uid     string
+	tunnel  *tunnel.TunnelStub
+	tunopts *TunnelOpts
+	rtt     int
+	url     string
+	ln      net.Listener
+}
+
 type Server struct {
-	opts       *ServerOpts
-	logger     *toolbox.Logger
-	webTunnels map[string]*tunnel.TunnelStub //线程共享变量
+	opts        *ServerOpts
+	logger      *toolbox.Logger
+	connections map[string]*ConnectObj
+	webTunnels  map[string]*ConnectObj //线程共享变量
+	rlock       sync.Mutex
 }
 
 func NewServer(opt *ServerOpts) Server {
 	s := Server{}
 	s.opts = opt
-	s.webTunnels = make(map[string]*tunnel.TunnelStub)
+	s.webTunnels = make(map[string]*ConnectObj)
+	s.connections = make(map[string]*ConnectObj)
 	s.logger = utils.NewLogger("S", opt.LogLevel)
 	return s
 }
 
-func (servss *Server) handlePrepare(tsport *transport.TcpTransport) {
-	packet, err := tsport.ReadPacket()
-	//fmt.Printf("receive====:%x\n", packet) // a6010b7463703030313a37323030
-	//fmt.Printf("transport read data:len:%d\n", len(packet))
-
-	if err != nil {
-		fmt.Println("transport read packet err;", err.Error())
-		authResFm := &protocol.Frame{Type: protocol.TUNNEL_RES, Status: 0x2, Message: err.Error()}
-		tsport.SendPacket(protocol.Encode(authResFm))
-		return
-	}
-	reqfm, err := protocol.Decode(packet)
-	if err != nil {
-		authResFm := &protocol.Frame{Type: protocol.TUNNEL_RES, Status: 0x2, Message: err.Error()}
-		tsport.SendPacket(protocol.Encode(authResFm))
-		return
-	}
-
-	if reqfm.Protocol == 0x1 {
-
-		remoteAddr := fmt.Sprintf("%s:%d", "127.0.0.1", reqfm.Port)
-		//listener, err := net.Listen("tcp", ":0") // 监听随机可用的端口
-		listener, err := net.Listen("tcp", remoteAddr)
+func (servss *Server) handleTcpPipe(worker *tunnel.TunnelStub, listener net.Listener) {
+	defer listener.Close()
+	// 处理新连接
+	for {
+		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("无法监听端口:", err)
-			authResFm := &protocol.Frame{Type: protocol.TUNNEL_RES, Status: 0x2, Message: err.Error()}
-			tsport.SendPacket(protocol.Encode(authResFm))
 			return
 		}
-
-		authResFm := &protocol.Frame{Type: protocol.TUNNEL_RES, Status: 0x1, Message: "success"}
-		tsport.SendPacket(protocol.Encode(authResFm))
-		defer listener.Close()
-
-		// 获取监听的地址和端口号
-		addr := listener.Addr().(*net.TCPAddr)
-		fmt.Println("监听地址:", addr.IP)
-		fmt.Println("监听端口:", addr.Port)
-
-		stub := tunnel.NewTunnelStub(tsport)
-
-		// 处理新连接
-		for {
-			conn, err := listener.Accept()
-
-			fmt.Println("connection====")
+		go func() {
+			defer conn.Close()
+			newstream := worker.CreateStream()
+			fmt.Println("create stream ok...")
+			err = tunnel.Relay(conn, newstream)
 			if err != nil {
-				fmt.Println("接受连接时发生错误:", err)
-				continue
+				servss.logger.Errorf("stream err:%s\n", err.Error())
 			}
-			go func() {
-				newstream := stub.CreateStream()
+		}()
+	}
+}
 
-				fmt.Println("create stream...")
-				<-newstream.Ready
-				fmt.Println("create stream ok...")
-				err = tunnel.Relay(conn, newstream)
-				if err != nil {
-					servss.logger.Errorf("stream err:%s\n", err.Error())
-				}
-			}()
-			// 在这里处理新连接...
-			//_ = conn.Close()
-		}
-	} else {
-
-		fulldomain := fmt.Sprintf("%s.%s", reqfm.Subdomain, servss.opts.ServerHost)
-
-		stub := tunnel.NewTunnelStub(tsport)
-		if servss.webTunnels[fulldomain] != nil {
-			authResFm := &protocol.Frame{Type: protocol.TUNNEL_RES, Status: 0x2, Message: "subdomain existed!"}
-			tsport.SendPacket(protocol.Encode(authResFm))
-			return
-		}
-		servss.webTunnels[fulldomain] = stub
-		authResFm := &protocol.Frame{Type: protocol.TUNNEL_RES, Status: 0x1, Message: "http://" + fulldomain}
-		tsport.SendPacket(protocol.Encode(authResFm))
-		return
+func (servss *Server) handleTcpTunnel(connobj *ConnectObj, tunopts *TunnelOpts) *tunnel.StatusMsg {
+	//servss.logger.Infof("handle tcp tunnel===>", tunopts)
+	remoteAddr := fmt.Sprintf("%s:%d", "127.0.0.1", tunopts.RemotePort)
+	listener, err := net.Listen("tcp", remoteAddr)
+	if err != nil {
+		return &tunnel.StatusMsg{Status: tunnel.FAIELD, Message: err.Error()}
 	}
 
+	// 获取监听的地址和端口号
+	addr := listener.Addr().(*net.TCPAddr)
+	go servss.handleTcpPipe(connobj.tunnel, listener)
+
+	connobj.ln = listener
+
+	msg := fmt.Sprintf("tcp://%s:%d", servss.opts.ServerHost, addr.Port)
+	return &tunnel.StatusMsg{Status: tunnel.OK, Message: msg}
+}
+
+func (servss *Server) handleWebTunnel(connobj *ConnectObj, tunopts *TunnelOpts) *tunnel.StatusMsg {
+	//servss.logger.Infof("handle web tunnel===>", tunopts)
+	fulldomain := fmt.Sprintf("%s.%s", tunopts.Subdomain, servss.opts.ServerHost)
+
+	if servss.webTunnels[fulldomain] != nil {
+		return &tunnel.StatusMsg{Status: tunnel.FAIELD, Message: "subdomain existed!"}
+	}
+	connobj.url = "http://" + fulldomain
+	servss.webTunnels[fulldomain] = connobj
+	return &tunnel.StatusMsg{Status: tunnel.OK, Message: connobj.url}
 }
 
 func (servss *Server) handleConnection(conn net.Conn) {
-	fmt.Println("connection====>")
 	tsport := transport.WrapConn(conn)
 
-	auth.HandleAuthRes("bbbb", tsport)
-	fmt.Println("auth ---ok")
-	servss.handlePrepare(tsport)
+	tunnelworker := tunnel.NewTunnelStub(tsport)
+	connobj := &ConnectObj{tunnel: tunnelworker, rtt: 0, uid: utils.GetUUID()}
+
+	tunnelworker.RegisterAuth(func(authstr string) *tunnel.StatusMsg {
+		fmt.Println("hand auth===>", authstr)
+		if authstr == "test:test123" {
+			return &tunnel.StatusMsg{Status: tunnel.OK, Message: "success"}
+		} else {
+			return &tunnel.StatusMsg{Status: tunnel.FAIELD, Message: "user/pass error!"}
+		}
+	})
+
+	tunnelworker.RegisterReqTun(func(tunops *TunnelOpts) *tunnel.StatusMsg {
+		tunopsstr, _ := json.Marshal(tunops)
+		fmt.Println("tunopts:", string(tunopsstr))
+		connobj.tunopts = tunops
+		if tunops.Type == "tcp" {
+			return servss.handleTcpTunnel(connobj, tunops)
+		} else {
+			return servss.handleWebTunnel(connobj, tunops)
+		}
+	})
+
+	tunnelworker.DoWork()
+	tunnelworker.AwaitClose()
+	//fmt.Println("clear =====>")
+	// clear
+	_ = conn.Close()
+	servss.rlock.Lock()
+	defer servss.rlock.Unlock()
+
+	delete(servss.connections, connobj.uid)
+	if connobj.tunopts == nil {
+		return
+	}
+	tunopts := connobj.tunopts
+	if tunopts.Type == "web" {
+		fulldomain := connobj.url[7:]
+		fmt.Printf("remove web fulldomain:%s\n", fulldomain)
+		delete(servss.webTunnels, fulldomain)
+	}
+
+	if connobj.ln != nil {
+		fmt.Printf("stop server on 127.0.0.1:%d\n", tunopts.RemotePort)
+		_ = connobj.ln.Close()
+	}
 }
 
 func (servss *Server) initTcpServer() {
@@ -146,64 +166,25 @@ func (servss *Server) handleHttpRequest(conn net.Conn) {
 	defer conn.Close()
 
 	servss.logger.Infof("handle http request==")
-	// 创建缓冲读取器以从连接中读取数据
-	reader := io.Reader(conn)
-
-	// 读取第一行，解析请求方法和路径
-	requestLine, err := utils.ReadOneLine(reader)
+	req, err := utils.ParseHttpHeader(conn)
 	if err != nil {
-		log.Println("无法读取请求:", err)
-		conn.Write([]byte("HTTP/1.1 200 OK\n\n target service invalid\r\n"))
+		conn.Write([]byte("HTTP/1.1 200 OK\n\n invalid http request\r\n"))
 		return
-	}
-
-	// 解析请求行
-	parts := strings.Split(requestLine, " ")
-	if len(parts) < 3 {
-		log.Println("无效的请求行:", requestLine)
-		conn.Write([]byte("HTTP/1.1 200 OK\n\n target service invalid\r\n"))
-		return
-	}
-	method := parts[0]
-	path := parts[1]
-
-	fmt.Println("request :", method, path)
-
-	cache := []byte(fmt.Sprintf("%s %s %s\r\n", method, path, parts[2]))
-	// 解析请求头部
-	headers := make(map[string]string)
-	for {
-		line, err := utils.ReadOneLine(reader)
-		if err != nil || line == "" {
-			break
-		}
-		cache = append(cache, []byte(line+"\r\n")...)
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 {
-			headerName := strings.TrimSpace(parts[0])
-			headerValue := strings.TrimSpace(parts[1])
-			headers[headerName] = headerValue
-		}
 	}
 
 	// 获取请求头部的 Host
-	host := headers["Host"]
+	host := req.Headers["Host"]
 	re := regexp.MustCompile(`:\d+`)
 	targetDomain := re.ReplaceAllString(host, "")
 
-	tunworker := servss.webTunnels[targetDomain]
-	if tunworker == nil {
-		conn.Write([]byte("HTTP/1.1 200 OK\n\n target service invalid\r\n"))
+	connobj := servss.webTunnels[targetDomain]
+	if connobj == nil {
+		conn.Write([]byte("HTTP/1.1 200 OK\n\n server host missing!\r\n"))
 		return
 	}
-
-	newstream := tunworker.CreateStream()
-
-	fmt.Println("create stream...", host)
-	<-newstream.Ready
+	newstream := connobj.tunnel.CreateStream()
 	fmt.Println("create stream ok..for host.", host)
-	fmt.Println(string(cache))
-	newstream.Write(cache)
+	newstream.Write(req.RawBuffer)
 	newstream.Write([]byte("\r\n"))
 	err = tunnel.Relay(conn, newstream)
 	if err != nil {
@@ -213,8 +194,17 @@ func (servss *Server) handleHttpRequest(conn net.Conn) {
 	}
 }
 
-func (servss *Server) initHttpsServer() {
+func (servss *Server) listenSocket(ln net.Listener) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			continue
+		}
+		go servss.handleHttpRequest(conn)
+	}
+}
 
+func (servss *Server) initHttpsServer() {
 	listenPort := servss.opts.HttpsAddr
 	address := fmt.Sprintf("%s:%d", "127.0.0.1", listenPort)
 	cer, err := tls.LoadX509KeyPair(servss.opts.TlsCrt, servss.opts.TlsKey)
@@ -227,14 +217,7 @@ func (servss *Server) initHttpsServer() {
 		log.Fatal(err)
 	}
 	servss.logger.Infof("https server listen on %s\n", address)
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			continue
-		}
-		go servss.handleHttpRequest(conn)
-	}
+	servss.listenSocket(ln)
 }
 
 func (servss *Server) initHttpServer() {
@@ -245,13 +228,7 @@ func (servss *Server) initHttpServer() {
 		log.Fatal(err)
 	}
 	servss.logger.Infof("http server listen on %s\n", address)
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			continue
-		}
-		go servss.handleHttpRequest(conn)
-	}
+	servss.listenSocket(ln)
 }
 
 func (servss *Server) Bootstrap() {
@@ -274,7 +251,6 @@ func (servss *Server) Bootstrap() {
 	}
 
 	if opts.HttpsAddr != 0 {
-		wg.Add(1)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

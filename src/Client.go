@@ -1,18 +1,16 @@
 package gwk
 
 import (
-	"errors"
 	"fmt"
 	"github.com/bbk47/toolbox"
-	"github/xuxihai123/go-gwk/v1/src/auth"
-	"github/xuxihai123/go-gwk/v1/src/protocol"
 	"github/xuxihai123/go-gwk/v1/src/transport"
 	"github/xuxihai123/go-gwk/v1/src/tunnel"
+	. "github/xuxihai123/go-gwk/v1/src/types"
 	"github/xuxihai123/go-gwk/v1/src/utils"
-	"log"
 	"net"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type Client struct {
@@ -30,36 +28,7 @@ func NewClient(opts *ClientOpts) Client {
 	return cli
 }
 
-func (cli *Client) handlePrepare(tunopts *TunnelConfig, tsport *transport.TcpTransport) (msg string, err error) {
-	protype := 0x1
-	if tunopts.Protocol == "web" {
-		protype = 0x2
-	}
-	tunnelReqFm := &protocol.Frame{Type: protocol.TUNNEL_REQ, Protocol: uint8(protype), Name: tunopts.Name, Port: uint16(tunopts.RemotePort), Subdomain: tunopts.Subdomain}
-
-	tsport.SendPacket(protocol.Encode(tunnelReqFm))
-
-	fmt.Println("send packet prepare..")
-	packet, err := tsport.ReadPacket()
-	if err != nil {
-		fmt.Println("transport read packet err;", err.Error())
-		return "", errors.New("transport read packet error!")
-	}
-
-	respFm, err := protocol.Decode(packet)
-	if err != nil {
-		return "", errors.New("protocol error!11")
-	}
-
-	fmt.Println(respFm)
-	if respFm.Status != 1 {
-		return "", errors.New("tunnel prepare failed!" + respFm.Message)
-	}
-
-	return respFm.Message, nil
-}
-
-func (cli *Client) handleStream(worker *tunnel.TunnelStub, tunopts *TunnelConfig, stream *tunnel.GwkStream) {
+func (cli *Client) handleStream(worker *tunnel.TunnelStub, tunopts *TunnelOpts, stream *tunnel.GwkStream) {
 	defer stream.Close()
 
 	targetAddr := fmt.Sprintf("%s:%d", "127.0.0.1", tunopts.LocalPort)
@@ -80,42 +49,41 @@ func (cli *Client) handleStream(worker *tunnel.TunnelStub, tunopts *TunnelConfig
 }
 
 func (cli *Client) setupTunnel(name string) {
-
-	fmt.Println("setupTunnel name:", name)
-	tunopts := cli.opts.Tunnels[name]
+	defer func() {
+		//fmt.Println("last close====>")
+		time.Sleep(3 * time.Second)
+		cli.setupTunnel(name)
+	}()
 	// 1. auth
 	// 2. prepare
 	// 3. setup stub
 	// 4. listen stream
+	fmt.Println("setupTunnel name:", name)
+	tunopts := cli.opts.Tunnels[name]
 	tunnelHost := cli.opts.TunnelHost
 	tunnelPort := cli.opts.TunnelAddr
 	tsport, err := transport.NewTcpTransport(tunnelHost, strconv.Itoa(tunnelPort))
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 		return
 	}
-	cli.logger.Infof("auth tunnel:%s\n", tunopts.Name)
-	err = auth.HandleAuthReq("xxxxx", tsport)
-	if err != nil {
-		fmt.Println("auth tunnel err:", err.Error())
-		return
-	}
+	defer tsport.Close()
 
-	cli.logger.Infof("auth tunnel:%s ok\n", tunopts.Name)
-
-	cli.logger.Infof("prepare tunnel:%s\n", tunopts.Name)
-	msg, err := cli.handlePrepare(&tunopts, tsport)
-	if err != nil {
-		fmt.Println("prepare tunnel err:", err.Error())
-		return
-	}
-	cli.logger.Infof("prepare tunnel:%s ok, %s =>tcp:%s%d\n", tunopts.Name, msg, "127.0.0.1:", tunopts.LocalPort)
 	tunnelworker := tunnel.NewTunnelStub(tsport)
+	tunnelworker.DoWork()
+	_, err = tunnelworker.StartAuth("test:test123")
+	if err != nil {
+		cli.logger.Errorf("auth err:%s\n", err.Error())
+		return
+	}
+	message, err := tunnelworker.PrepareTunnel(&tunopts)
+	if err != nil {
+		cli.logger.Errorf("err:%s\n", err.Error())
+		return
+	}
+	cli.logger.Infof("%10s, tunnel ok, %s =>tcp:%s%d\n", tunopts.Name, message, "127.0.0.1:", tunopts.LocalPort)
 	for {
-		fmt.Println("tunnelworker.Accept....", tunopts)
 		stream, err := tunnelworker.Accept()
-
-		fmt.Println("stream commine")
 		if err != nil {
 			// transport error
 			cli.logger.Errorf("stream accept err:%s\n", err.Error())
@@ -123,6 +91,7 @@ func (cli *Client) setupTunnel(name string) {
 		}
 		go cli.handleStream(tunnelworker, &tunopts, stream)
 	}
+
 }
 
 func (cli *Client) Bootstrap() {

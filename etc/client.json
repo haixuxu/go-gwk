@@ -3,22 +3,22 @@
   "tunnelAddr":4443,
   "tunnels":{
     "tcp001":{
-      "protocol":"tcp",
+      "type":"tcp",
       "localPort":5000,
       "remotePort":7200
     },
     "tcp002":{
-      "protocol":"tcp",
+      "type":"tcp",
       "localPort":5000,
       "remotePort":7500
     },
     "webapp02":{
-      "protocol":"web",
+      "type":"web",
       "localPort":4900,
       "subdomain":"app02"
     },
     "webappmob":{
-      "protocol":"web",
+      "type":"web",
       "localPort":9000,
       "subdomain":"mob"
     }
