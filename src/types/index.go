@@ -1,10 +1,10 @@
 package types
 
 type ClientOpts struct {
-	LogLevel   string                `json:"logLevel"`
-	TunnelHost string                `json:"tunnelHost"`
-	TunnelAddr int                   `json:"tunnelAddr"`
-	Tunnels    map[string]TunnelOpts `json:"tunnels"`
+	LogLevel   string                 `json:"logLevel"`
+	TunnelHost string                 `json:"tunnelHost"`
+	TunnelAddr int                    `json:"tunnelAddr"`
+	Tunnels    map[string]*TunnelOpts `json:"tunnels"`
 }
 
 type TunnelOpts struct {
@@ -13,6 +13,7 @@ type TunnelOpts struct {
 	LocalPort  int    `json:"localPort"`
 	RemotePort int    `json:"remotePort"`
 	Subdomain  string `json:"subdomain,omitempty"`
+	Status     string
 }
 
 func GetTypeByNo(ptype uint8) string {

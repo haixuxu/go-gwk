@@ -26,7 +26,7 @@ var RootCmd = &cobra.Command{
 
 		tunnels := viper.Get("tunnels").(map[string]interface{})
 
-		tunnelDict := make(map[string]types.TunnelOpts)
+		tunnelDict := make(map[string]*types.TunnelOpts)
 		for key, value := range tunnels {
 
 			tun := value.(map[string]interface{})
@@ -47,7 +47,7 @@ var RootCmd = &cobra.Command{
 					tunobj.RemotePort = int(value2.(float64))
 				}
 			}
-			tunnelDict[key] = tunobj
+			tunnelDict[key] = &tunobj
 		}
 		cliopts.Tunnels = tunnelDict
 
