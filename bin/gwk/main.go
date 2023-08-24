@@ -30,7 +30,7 @@ var RootCmd = &cobra.Command{
 		for key, value := range tunnels {
 
 			tun := value.(map[string]interface{})
-			tunobj := types.TunnelOpts{}
+			tunobj := types.TunnelOpts{Status: "init"}
 			tunobj.Name = key
 			for key2, value2 := range tun {
 				if key2 == "type" {
