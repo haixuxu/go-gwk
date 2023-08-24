@@ -54,7 +54,7 @@ func (servss *Server) handleTcpPipe(worker *tunnel.TunnelStub, listener net.List
 		go func() {
 			defer conn.Close()
 			newstream := worker.CreateStream()
-			fmt.Println("create stream ok...")
+			servss.logger.Info("create stream ok...")
 			err = tunnel.Relay(conn, newstream)
 			if err != nil {
 				servss.logger.Errorf("stream err:%s\n", err.Error())
@@ -98,7 +98,7 @@ func (servss *Server) handleConnection(conn net.Conn) {
 
 	tsport := transport.WrapConn(conn)
 	err := auth.HandleAuthRes(tsport, func(authstr string) *StatusMsg {
-		fmt.Println("hand auth===>", authstr)
+		servss.logger.Infof("hand auth===>%s\n", authstr)
 		if authstr == "test:test123" {
 			return &StatusMsg{Status: tunnel.OK, Message: "success"}
 		} else {
@@ -113,7 +113,7 @@ func (servss *Server) handleConnection(conn net.Conn) {
 
 	err = prepare.HandleTunnelRes(tsport, func(tunopts *TunnelOpts) *StatusMsg {
 		tunopsstr, _ := json.Marshal(tunopts)
-		fmt.Println("tunopts:", string(tunopsstr))
+		servss.logger.Infof("tunopts:%s\n", string(tunopsstr))
 		connobj.tunopts = tunopts
 		if tunopts.Type == "tcp" {
 			return servss.handleTcpTunnel(connobj, tunopts)
@@ -141,12 +141,12 @@ func (servss *Server) handleConnection(conn net.Conn) {
 	tunopts := connobj.tunopts
 	if tunopts.Type == "web" {
 		fulldomain := connobj.url[7:]
-		fmt.Printf("remove web fulldomain:%s\n", fulldomain)
+		servss.logger.Infof("remove web fulldomain:%s\n", fulldomain)
 		delete(servss.webTunnels, fulldomain)
 	}
 
 	if connobj.ln != nil {
-		fmt.Printf("stop server on 127.0.0.1:%d\n", tunopts.RemotePort)
+		servss.logger.Infof("stop server on 127.0.0.1:%d\n", tunopts.RemotePort)
 		_ = connobj.ln.Close()
 	}
 }
@@ -171,7 +171,7 @@ func (servss *Server) handleHttpRequest(conn net.Conn) {
 		return
 	}
 	newstream := connobj.tunnel.CreateStream()
-	fmt.Println("create stream ok..for host.", host)
+	servss.logger.Infof("create stream ok..for %s\n", host)
 	newstream.Write(req.RawBuffer)
 	newstream.Write([]byte("\r\n"))
 	err = tunnel.Relay(conn, newstream)

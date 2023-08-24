@@ -6,16 +6,11 @@ import (
 	"github.com/bbk47/toolbox"
 	"github/xuxihai123/go-gwk/v1/src/protocol"
 	"github/xuxihai123/go-gwk/v1/src/transport"
-	. "github/xuxihai123/go-gwk/v1/src/types"
 	"github/xuxihai123/go-gwk/v1/src/utils"
 )
 
 const OK = 0x1
 const FAIELD = 0x2
-
-type PongFunc func(up, down int64)
-type AuthFunc func(authstr string) *StatusMsg
-type ReqTunFun func(opt *TunnelOpts) *StatusMsg
 
 type TunnelStub struct {
 	tsport   *transport.TcpTransport
@@ -23,11 +18,10 @@ type TunnelStub struct {
 	streamch chan *GwkStream
 	sendch   chan *protocol.Frame
 	closech  chan uint8
-	state    string // "init"=>"authed"=>"ready"
 	errmsg   string // close msg
 	seq      uint32
 	//wlock    sync.Mutex
-	pongFunc PongFunc
+	pongFunc func(up, down int64)
 }
 
 func NewTunnelStub(tsport *transport.TcpTransport) *TunnelStub {
@@ -36,7 +30,6 @@ func NewTunnelStub(tsport *transport.TcpTransport) *TunnelStub {
 	stub.sendch = make(chan *protocol.Frame, 1024)
 	stub.streams = make(map[string]*GwkStream)
 	stub.closech = make(chan uint8)
-	stub.state = "init"
 	go stub.readWorker()
 	go stub.writeWorker()
 	return &stub
@@ -109,7 +102,6 @@ func (ts *TunnelStub) readWorker() {
 	}()
 	for {
 		packet, err := ts.tsport.ReadPacket()
-		//fmt.Printf("receive====:%d\n", len(packet))
 		//fmt.Printf("transport read data:len:%d\n", len(packet))
 		if err != nil {
 			ts.errmsg = "read packet err:" + err.Error()
@@ -152,7 +144,7 @@ func (ts *TunnelStub) readWorker() {
 			}
 			err := stream.produce(respFrame.Data)
 			if err != nil {
-				fmt.Println("produce err:", err)
+				//fmt.Println("produce err:", err)
 				ts.closeStream(streamId)
 			}
 		} else if respFrame.Type == protocol.STREAM_FIN {
@@ -168,7 +160,6 @@ func (ts *TunnelStub) readWorker() {
 func (ts *TunnelStub) CreateStream() *GwkStream {
 	streamId := utils.GetUUID()
 	stream := NewGwkStream(streamId, ts)
-	fmt.Println("start stream===>", streamId)
 	ts.streams[streamId] = stream
 	frame := &protocol.Frame{Type: protocol.STREAM_INIT, StreamID: streamId}
 	ts.sendch <- frame
@@ -190,8 +181,7 @@ func (ts *TunnelStub) destroyStream(streamId string) {
 }
 
 func (ts *TunnelStub) Ping() {
-	stime := utils.GetNowInt64String()
-	frame := &protocol.Frame{Stime: stime}
+	frame := &protocol.Frame{Stime: utils.GetNowInt64String()}
 	ts.sendch <- frame
 }
 

@@ -67,7 +67,7 @@ func (cli *Client) updateConsole(tunopts *TunnelOpts, statusText string) {
 	tunopts.Status = statusText
 	msg := "tunnel list:\n"
 	for _, value := range cli.opts.Tunnels {
-		msg = fmt.Sprintf("%s%s\n", msg, value.Status)
+		msg = fmt.Sprintf("%s%-10s%s\n", msg, value.Name, value.Status)
 	}
 	cli.pr.Flush(msg)
 }
@@ -89,7 +89,7 @@ func (cli *Client) setupTunnel(name string) {
 	tsport, err := transport.NewTcpTransport(tunnelHost, strconv.Itoa(tunnelPort))
 	if err != nil {
 		//fmt.Println(err)
-		cli.updateConsole(tunopts, "create conn err:"+err.Error())
+		cli.updateConsole(tunopts, "connect:"+err.Error())
 		return
 	}
 	defer tsport.Close()
@@ -103,12 +103,12 @@ func (cli *Client) setupTunnel(name string) {
 
 	message, err := prepare.HandleTunnelReq(tsport, tunopts)
 	if err != nil {
-		cli.updateConsole(tunopts, "prepare err:"+err.Error())
+		cli.updateConsole(tunopts, "prepare:"+err.Error())
 		time.Sleep(10 * time.Second)
 		return
 	}
 
-	sucmsg := fmt.Sprintf("%-10s \033[32mok\033[0m, %s =>tcp://127.0.0.1:%d", tunopts.Name, message, tunopts.LocalPort)
+	sucmsg := fmt.Sprintf("\033[32mok\033[0m, %s =>tcp://127.0.0.1:%d", message, tunopts.LocalPort)
 	cli.updateConsole(tunopts, sucmsg)
 
 	tunnelworker := tunnel.NewTunnelStub(tsport)
@@ -117,7 +117,7 @@ func (cli *Client) setupTunnel(name string) {
 		stream, err := tunnelworker.Accept()
 		if err != nil {
 			// transport error
-			cli.updateConsole(tunopts, "stream accept err:"+err.Error())
+			cli.updateConsole(tunopts, "accept:"+err.Error())
 			//cli.logger.Errorf("stream accept err:%s\n", err.Error())
 			return
 		}
