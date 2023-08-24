@@ -1,12 +1,12 @@
-package tunnel
+package stub
 
 import (
 	"errors"
 	"fmt"
-	"github.com/bbk47/toolbox"
 	"github/xuxihai123/go-gwk/v1/src/protocol"
 	"github/xuxihai123/go-gwk/v1/src/transport"
 	"github/xuxihai123/go-gwk/v1/src/utils"
+	"time"
 )
 
 const OK = 0x1
@@ -50,7 +50,7 @@ func (ts *TunnelStub) sendTinyFrame(frame *protocol.Frame) error {
 	//ts.wlock.Lock()
 	//defer ts.wlock.Unlock()
 	// 发送数据
-	//log.Printf("write tunnel cid:%s, data[%d]bytes, frame type:%d\n", frame.StreamID, len(binaryData), frame.Type)
+	//log.Printf("write stub cid:%s, data[%d]bytes, frame type:%d\n", frame.StreamID, len(binaryData), frame.Type)
 	return ts.tsport.SendPacket(binaryData)
 }
 
@@ -113,14 +113,15 @@ func (ts *TunnelStub) readWorker() {
 			return
 		}
 
-		//log.Printf("read  tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.StreamID, len(packet), respFrame.Type)
+		//log.Printf("read  stub cid:%s, data[%d]bytes, frame type:%d\n", respFrame.StreamID, len(packet), respFrame.Type)
 		if respFrame.Type == protocol.PING_FRAME {
-			timebs := toolbox.GetNowInt64Bytes()
-			data := append(respFrame.Data, timebs...)
-			pongFrame := &protocol.Frame{StreamID: respFrame.StreamID, Type: protocol.PONG_FRAME, Data: data}
+			pongFrame := &protocol.Frame{StreamID: respFrame.StreamID, Type: protocol.PONG_FRAME, Stime: respFrame.Stime, Atime: protocol.GetNowTimestrapInt()}
 			ts.sendch <- pongFrame
 		} else if respFrame.Type == protocol.PONG_FRAME {
-			//ts.pongFunc(respFrame.Atime-respFrame.Stime, downms)
+			now := protocol.GetNowTimestrapInt()
+			up := int64(respFrame.Atime) - int64(respFrame.Stime)
+			down := int64(now) - int64(respFrame.Atime)
+			ts.pongFunc(up, down)
 		} else if respFrame.Type == protocol.STREAM_INIT {
 			st := NewGwkStream(respFrame.StreamID, ts)
 			ts.streams[st.Cid] = st
@@ -157,15 +158,19 @@ func (ts *TunnelStub) readWorker() {
 	}
 }
 
-func (ts *TunnelStub) CreateStream() *GwkStream {
+func (ts *TunnelStub) CreateStream() (*GwkStream, error) {
 	streamId := utils.GetUUID()
 	stream := NewGwkStream(streamId, ts)
 	ts.streams[streamId] = stream
 	frame := &protocol.Frame{Type: protocol.STREAM_INIT, StreamID: streamId}
 	ts.sendch <- frame
-	<-stream.Ready
-
-	return stream
+	select {
+	case <-stream.Ready:
+		// send to proxy
+		return stream, nil
+	case <-time.After(15 * time.Second):
+		return nil, errors.New("server connect timeout!(504)")
+	}
 }
 func (ts *TunnelStub) SetReady(stream *GwkStream) {
 	frame := &protocol.Frame{Type: protocol.STREAM_EST, StreamID: stream.Cid}
@@ -181,7 +186,7 @@ func (ts *TunnelStub) destroyStream(streamId string) {
 }
 
 func (ts *TunnelStub) Ping() {
-	frame := &protocol.Frame{Stime: utils.GetNowInt64String()}
+	frame := &protocol.Frame{Type: protocol.PING_FRAME, Stime: protocol.GetNowTimestrapInt()}
 	ts.sendch <- frame
 }
 

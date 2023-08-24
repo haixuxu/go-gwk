@@ -1,4 +1,4 @@
-package tunnel
+package stub
 
 import (
 	"io"
@@ -6,21 +6,21 @@ import (
 )
 
 type GwkStream struct {
-	Cid  string
-	Ready  chan uint8
-	ts   *TunnelStub
-	rp   *io.PipeReader
-	wp   *io.PipeWriter
+	Cid   string
+	Ready chan uint8
+	ts    *TunnelStub
+	rp    *io.PipeReader
+	wp    *io.PipeWriter
 }
 
-func NewGwkStream(cid string,  ts *TunnelStub) *GwkStream {
+func NewGwkStream(cid string, ts *TunnelStub) *GwkStream {
 	s := &GwkStream{}
 	s.Cid = cid
 	s.ts = ts
 	rp, wp := io.Pipe()
 	s.rp = rp
 	s.wp = wp
-	s.Ready = make (chan uint8)
+	s.Ready = make(chan uint8)
 
 	return s
 }

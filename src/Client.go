@@ -6,8 +6,8 @@ import (
 	"github/xuxihai123/go-gwk/v1/src/auth"
 	"github/xuxihai123/go-gwk/v1/src/console"
 	"github/xuxihai123/go-gwk/v1/src/prepare"
+	"github/xuxihai123/go-gwk/v1/src/stub"
 	"github/xuxihai123/go-gwk/v1/src/transport"
-	"github/xuxihai123/go-gwk/v1/src/tunnel"
 	. "github/xuxihai123/go-gwk/v1/src/types"
 	"github/xuxihai123/go-gwk/v1/src/utils"
 	"net"
@@ -39,21 +39,22 @@ func NewClient(opts *ClientOpts) Client {
 	return cli
 }
 
-func (cli *Client) handleStream(worker *tunnel.TunnelStub, tunopts *TunnelOpts, stream *tunnel.GwkStream, sucessMsg string) {
+func (cli *Client) handleStream(worker *stub.TunnelStub, tunopts *TunnelOpts, stream *stub.GwkStream, sucessMsg string) {
 	defer stream.Close()
 
 	targetAddr := fmt.Sprintf("%s:%d", "127.0.0.1", tunopts.LocalPort)
 	//cli.logger.Infof("REQ CONNECT=>%s\n", targetAddr)
 	cli.updateConsole(tunopts, fmt.Sprintf("%s \033[32m->\033[0m", sucessMsg))
-	tsocket, err := net.Dial("tcp", targetAddr)
+	tsocket, err := net.DialTimeout("tcp", targetAddr, 5*time.Second)
 	if err != nil {
+		cli.updateConsole(tunopts, fmt.Sprintf("%s \033[31mx\033[0m", sucessMsg))
 		return
 	}
 	defer tsocket.Close()
 	cli.updateConsole(tunopts, fmt.Sprintf("%s \033[32m<->\033[0m", sucessMsg))
 	//cli.logger.Infof("DIAL SUCCESS==>%s\n", targetAddr, stream.Cid)
 	worker.SetReady(stream)
-	err = tunnel.Relay(tsocket, stream)
+	err = stub.Relay(tsocket, stream)
 	if err != nil {
 		cli.updateConsole(tunopts, fmt.Sprintf("%s stream err:\033[31m%s\033[0m", sucessMsg, err.Error()))
 		//cli.logger.Errorf("stream err:%s\n", err.Error())
@@ -65,7 +66,7 @@ func (cli *Client) handleStream(worker *tunnel.TunnelStub, tunopts *TunnelOpts, 
 
 func (cli *Client) updateConsole(tunopts *TunnelOpts, statusText string) {
 	tunopts.Status = statusText
-	msg := "tunnel list:\n"
+	msg := "stub list:\n"
 	for _, value := range cli.opts.Tunnels {
 		msg = fmt.Sprintf("%s%-10s%s\n", msg, value.Name, value.Status)
 	}
@@ -85,7 +86,7 @@ func (cli *Client) setupTunnel(name string) {
 	tunopts := cli.opts.Tunnels[name]
 	tunnelHost := cli.opts.TunnelHost
 	tunnelPort := cli.opts.TunnelAddr
-	cli.updateConsole(tunopts, "connecting tunnel:"+name)
+	cli.updateConsole(tunopts, "connecting stub:"+name)
 	tsport, err := transport.NewTcpTransport(tunnelHost, strconv.Itoa(tunnelPort))
 	if err != nil {
 		//fmt.Println(err)
@@ -111,7 +112,7 @@ func (cli *Client) setupTunnel(name string) {
 	sucmsg := fmt.Sprintf("\033[32mok\033[0m, %s =>tcp://127.0.0.1:%d", message, tunopts.LocalPort)
 	cli.updateConsole(tunopts, sucmsg)
 
-	tunnelworker := tunnel.NewTunnelStub(tsport)
+	tunnelworker := stub.NewTunnelStub(tsport)
 	//cli.logger.Infof("sucmsg\n", sucmsg)
 	for {
 		stream, err := tunnelworker.Accept()

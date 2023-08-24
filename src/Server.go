@@ -7,21 +7,22 @@ import (
 	"github.com/bbk47/toolbox"
 	"github/xuxihai123/go-gwk/v1/src/auth"
 	"github/xuxihai123/go-gwk/v1/src/prepare"
+	"github/xuxihai123/go-gwk/v1/src/stub"
 	"github/xuxihai123/go-gwk/v1/src/transport"
-	"github/xuxihai123/go-gwk/v1/src/tunnel"
 	. "github/xuxihai123/go-gwk/v1/src/types"
 	"github/xuxihai123/go-gwk/v1/src/utils"
 	"log"
 	"net"
 	"regexp"
 	"sync"
+	"time"
 )
 
 type ConnectObj struct {
 	uid     string
-	tunnel  *tunnel.TunnelStub
+	tunnel  *stub.TunnelStub
 	tunopts *TunnelOpts
-	rtt     int
+	rtt     int64
 	url     string
 	ln      net.Listener
 }
@@ -43,7 +44,7 @@ func NewServer(opt *ServerOpts) Server {
 	return s
 }
 
-func (servss *Server) handleTcpPipe(worker *tunnel.TunnelStub, listener net.Listener) {
+func (servss *Server) handleTcpPipe(worker *stub.TunnelStub, listener net.Listener, addr *net.TCPAddr) {
 	defer listener.Close()
 	// 处理新连接
 	for {
@@ -53,44 +54,52 @@ func (servss *Server) handleTcpPipe(worker *tunnel.TunnelStub, listener net.List
 		}
 		go func() {
 			defer conn.Close()
-			newstream := worker.CreateStream()
-			servss.logger.Info("create stream ok...")
-			err = tunnel.Relay(conn, newstream)
+
+			newstream, err := worker.CreateStream()
+			if err != nil {
+				servss.logger.Infof("create stream err:%s\n", err.Error())
+				return
+			}
+			servss.logger.Infof("create stream ok:%s\n", addr.String())
+			err = stub.Relay(conn, newstream)
 			if err != nil {
 				servss.logger.Errorf("stream err:%s\n", err.Error())
+			} else {
+				servss.logger.Infof("stream close:%s\n", addr.String())
+
 			}
 		}()
 	}
 }
 
 func (servss *Server) handleTcpTunnel(connobj *ConnectObj, tunopts *TunnelOpts) *StatusMsg {
-	//servss.logger.Infof("handle tcp tunnel===>", tunopts)
+	//servss.logger.Infof("handle tcp stub===>", tunopts)
 	remoteAddr := fmt.Sprintf("%s:%d", "127.0.0.1", tunopts.RemotePort)
 	listener, err := net.Listen("tcp", remoteAddr)
 	if err != nil {
-		return &StatusMsg{Status: tunnel.FAIELD, Message: err.Error()}
+		return &StatusMsg{Status: stub.FAIELD, Message: err.Error()}
 	}
 
 	// 获取监听的地址和端口号
 	addr := listener.Addr().(*net.TCPAddr)
-	go servss.handleTcpPipe(connobj.tunnel, listener)
+	go servss.handleTcpPipe(connobj.tunnel, listener, addr)
 
 	connobj.ln = listener
 
 	msg := fmt.Sprintf("tcp://%s:%d", servss.opts.ServerHost, addr.Port)
-	return &StatusMsg{Status: tunnel.OK, Message: msg}
+	return &StatusMsg{Status: stub.OK, Message: msg}
 }
 
 func (servss *Server) handleWebTunnel(connobj *ConnectObj, tunopts *TunnelOpts) *StatusMsg {
-	//servss.logger.Infof("handle web tunnel===>", tunopts)
+	//servss.logger.Infof("handle web stub===>", tunopts)
 	fulldomain := fmt.Sprintf("%s.%s", tunopts.Subdomain, servss.opts.ServerHost)
 
 	if servss.webTunnels[fulldomain] != nil {
-		return &StatusMsg{Status: tunnel.FAIELD, Message: "subdomain existed!"}
+		return &StatusMsg{Status: stub.FAIELD, Message: "subdomain existed!"}
 	}
 	connobj.url = "http://" + fulldomain
 	servss.webTunnels[fulldomain] = connobj
-	return &StatusMsg{Status: tunnel.OK, Message: connobj.url}
+	return &StatusMsg{Status: stub.OK, Message: connobj.url}
 }
 
 func (servss *Server) handleConnection(conn net.Conn) {
@@ -100,9 +109,9 @@ func (servss *Server) handleConnection(conn net.Conn) {
 	err := auth.HandleAuthRes(tsport, func(authstr string) *StatusMsg {
 		servss.logger.Infof("hand auth===>%s\n", authstr)
 		if authstr == "test:test123" {
-			return &StatusMsg{Status: tunnel.OK, Message: "success"}
+			return &StatusMsg{Status: stub.OK, Message: "success"}
 		} else {
-			return &StatusMsg{Status: tunnel.FAIELD, Message: "user/pass error!"}
+			return &StatusMsg{Status: stub.FAIELD, Message: "user/pass error!"}
 		}
 	})
 
@@ -126,11 +135,16 @@ func (servss *Server) handleConnection(conn net.Conn) {
 		return
 	}
 
-	tunnelworker := tunnel.NewTunnelStub(tsport)
+	tunnelworker := stub.NewTunnelStub(tsport)
+	connobj.tunnel = tunnelworker
+	servss.connections[connobj.uid] = connobj
+	tunnelworker.NotifyPong(func(up, down int64) {
+		connobj.rtt = up + down
+		//servss.logger.Infof("stub %s: up:%d,down:%d", connobj.tunopts.Name, up, down)
+	})
 	tunnelworker.AwaitClose()
 	//fmt.Println("clear =====>")
 	// clear
-	_ = conn.Close()
 	servss.rlock.Lock()
 	defer servss.rlock.Unlock()
 	delete(servss.connections, connobj.uid)
@@ -170,11 +184,15 @@ func (servss *Server) handleHttpRequest(conn net.Conn) {
 		conn.Write([]byte("HTTP/1.1 200 OK\n\n server host missing!\r\n"))
 		return
 	}
-	newstream := connobj.tunnel.CreateStream()
+	newstream, err := connobj.tunnel.CreateStream()
+	if err != nil {
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\n\n%s\r\n", err.Error())))
+		return
+	}
 	servss.logger.Infof("create stream ok..for %s\n", host)
 	newstream.Write(req.RawBuffer)
 	newstream.Write([]byte("\r\n"))
-	err = tunnel.Relay(conn, newstream)
+	err = stub.Relay(conn, newstream)
 	if err != nil {
 		servss.logger.Errorf("stream err:%s\n", err.Error())
 	} else {
@@ -241,13 +259,25 @@ func (servss *Server) initHttpServer(wg *sync.WaitGroup) {
 	servss.logger.Infof("http server listen on %s\n", address)
 	servss.listenSocket(ln)
 }
+func (svc *Server) keepPingWs() {
+	ticker := time.Tick(time.Second * 5)
+	for range ticker {
+		for _, value := range svc.connections {
+			tunnelobj := value.tunnel
+			if tunnelobj != nil {
+				tunnelobj.Ping()
+			}
+		}
+	}
+}
 
 func (servss *Server) Bootstrap() {
 	opts := servss.opts
 	var wg sync.WaitGroup
 
-	wg.Add(1)
+	wg.Add(2)
 	go servss.initTcpServer(&wg)
+	go servss.keepPingWs()
 
 	if opts.HttpAddr != 0 {
 		wg.Add(1)
