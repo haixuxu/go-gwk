@@ -18,25 +18,16 @@ type AuthFunc func(authstr string) *StatusMsg
 type ReqTunFun func(opt *TunnelOpts) *StatusMsg
 
 type TunnelStub struct {
-	tsport      *transport.TcpTransport
-	streams     map[string]*GwkStream
-	streamch    chan *GwkStream
-	sendch      chan *protocol.Frame
-	closech     chan uint8
-	state       string // "init"=>"authed"=>"ready"
-	errmsg      string // close msg
-	authedch    chan *StatusMsg
-	tunnelResCh chan *StatusMsg
-	seq         uint32
+	tsport   *transport.TcpTransport
+	streams  map[string]*GwkStream
+	streamch chan *GwkStream
+	sendch   chan *protocol.Frame
+	closech  chan uint8
+	state    string // "init"=>"authed"=>"ready"
+	errmsg   string // close msg
+	seq      uint32
 	//wlock    sync.Mutex
-	pongFunc   PongFunc
-	authFunc   AuthFunc
-	reqtunFunc ReqTunFun
-}
-
-type StatusMsg struct {
-	Status  uint8
-	Message string
+	pongFunc PongFunc
 }
 
 func NewTunnelStub(tsport *transport.TcpTransport) *TunnelStub {
@@ -45,27 +36,14 @@ func NewTunnelStub(tsport *transport.TcpTransport) *TunnelStub {
 	stub.sendch = make(chan *protocol.Frame, 1024)
 	stub.streams = make(map[string]*GwkStream)
 	stub.closech = make(chan uint8)
-	stub.authedch = make(chan *StatusMsg)
-	stub.tunnelResCh = make(chan *StatusMsg)
 	stub.state = "init"
+	go stub.readWorker()
+	go stub.writeWorker()
 	return &stub
 }
 
 func (ts *TunnelStub) NotifyPong(handler func(up, down int64)) {
 	ts.pongFunc = handler
-}
-
-func (ts *TunnelStub) RegisterAuth(handler AuthFunc) {
-	ts.authFunc = handler
-}
-
-func (ts *TunnelStub) RegisterReqTun(handler ReqTunFun) {
-	ts.reqtunFunc = handler
-}
-
-func (ts *TunnelStub) DoWork() {
-	go ts.readWorker()
-	go ts.writeWorker()
 }
 
 func (ts *TunnelStub) AwaitClose() {
@@ -144,23 +122,7 @@ func (ts *TunnelStub) readWorker() {
 		}
 
 		//log.Printf("read  tunnel cid:%s, data[%d]bytes, frame type:%d\n", respFrame.StreamID, len(packet), respFrame.Type)
-		if respFrame.Type == protocol.AUTH_REQ {
-			authRet := ts.authFunc(respFrame.Token)
-			authResFm := &protocol.Frame{Type: protocol.AUTH_RES, Status: authRet.Status, Token: authRet.Message}
-			ts.sendch <- authResFm
-		} else if respFrame.Type == protocol.AUTH_RES {
-			ts.state = "authed"
-			ts.authedch <- &StatusMsg{Status: respFrame.Status, Message: respFrame.Message}
-		} else if respFrame.Type == protocol.TUNNEL_REQ {
-			tuntypestr := GetTypeByNo(respFrame.TunType)
-			tunops := &TunnelOpts{Name: respFrame.Name, RemotePort: int(respFrame.Port), Type: tuntypestr, Subdomain: respFrame.Subdomain}
-			prepareRet := ts.reqtunFunc(tunops)
-			tunnelResFm := &protocol.Frame{Type: protocol.TUNNEL_RES, Status: prepareRet.Status, Message: prepareRet.Message}
-			ts.sendch <- tunnelResFm
-		} else if respFrame.Type == protocol.TUNNEL_RES {
-			ts.state = "ready"
-			ts.tunnelResCh <- &StatusMsg{Status: respFrame.Status, Message: respFrame.Message}
-		} else if respFrame.Type == protocol.PING_FRAME {
+		if respFrame.Type == protocol.PING_FRAME {
 			timebs := toolbox.GetNowInt64Bytes()
 			data := append(respFrame.Data, timebs...)
 			pongFrame := &protocol.Frame{StreamID: respFrame.StreamID, Type: protocol.PONG_FRAME, Data: data}
@@ -198,10 +160,6 @@ func (ts *TunnelStub) readWorker() {
 		} else if respFrame.Type == protocol.STREAM_RST {
 			ts.resetStream(respFrame.StreamID)
 		} else {
-			if ts.state == "init" {
-				ts.state = "authed"
-				ts.authedch <- &StatusMsg{Status: respFrame.Status, Message: "protocol err"}
-			}
 			fmt.Println("eception frame type:", respFrame.Type)
 		}
 	}
@@ -229,26 +187,6 @@ func (ts *TunnelStub) destroyStream(streamId string) {
 		stream.Close()
 		delete(ts.streams, streamId)
 	}
-}
-func (ts *TunnelStub) StartAuth(authtoken string) (message string, err error) {
-
-	authReqFm := &protocol.Frame{Type: protocol.AUTH_REQ, Status: 0x0, Token: authtoken}
-	ts.sendch <- authReqFm
-	smsg := <-ts.authedch
-	if smsg.Status != 0x1 {
-		return "", errors.New(smsg.Message)
-	}
-	return smsg.Message, nil
-}
-
-func (ts *TunnelStub) PrepareTunnel(tunopts *TunnelOpts) (msg string, err error) {
-	tunReqFm := &protocol.Frame{Type: protocol.TUNNEL_REQ, TunType: tunopts.GetTypeNo(), Port: uint16(tunopts.RemotePort), Subdomain: tunopts.Subdomain, Name: tunopts.Name}
-	ts.sendch <- tunReqFm
-	smsg := <-ts.tunnelResCh
-	if smsg.Status != 0x1 {
-		return "", errors.New(smsg.Message)
-	}
-	return smsg.Message, nil
 }
 
 func (ts *TunnelStub) Ping() {

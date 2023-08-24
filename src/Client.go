@@ -3,7 +3,9 @@ package gwk
 import (
 	"fmt"
 	"github.com/bbk47/toolbox"
+	"github/xuxihai123/go-gwk/v1/src/auth"
 	"github/xuxihai123/go-gwk/v1/src/console"
+	"github/xuxihai123/go-gwk/v1/src/prepare"
 	"github/xuxihai123/go-gwk/v1/src/transport"
 	"github/xuxihai123/go-gwk/v1/src/tunnel"
 	. "github/xuxihai123/go-gwk/v1/src/types"
@@ -92,22 +94,24 @@ func (cli *Client) setupTunnel(name string) {
 	}
 	defer tsport.Close()
 
-	tunnelworker := tunnel.NewTunnelStub(tsport)
-	tunnelworker.DoWork()
-	_, err = tunnelworker.StartAuth("test:test123")
+	err = auth.HandleAuthReq(tsport, "test:test123")
 	if err != nil {
-		cli.updateConsole(tunopts, "auth err:"+err.Error())
-		//cli.logger.Errorf("auth err:%s\n", err.Error())
+		cli.updateConsole(tunopts, "auth:"+err.Error())
+		time.Sleep(10 * time.Second)
 		return
 	}
-	message, err := tunnelworker.PrepareTunnel(tunopts)
+
+	message, err := prepare.HandleTunnelReq(tsport, tunopts)
 	if err != nil {
 		cli.updateConsole(tunopts, "prepare err:"+err.Error())
-		//cli.logger.Errorf("err:%s\n", err.Error())
+		time.Sleep(10 * time.Second)
 		return
 	}
+
 	sucmsg := fmt.Sprintf("%-10s \033[32mok\033[0m, %s =>tcp://127.0.0.1:%d", tunopts.Name, message, tunopts.LocalPort)
 	cli.updateConsole(tunopts, sucmsg)
+
+	tunnelworker := tunnel.NewTunnelStub(tsport)
 	//cli.logger.Infof("sucmsg\n", sucmsg)
 	for {
 		stream, err := tunnelworker.Accept()

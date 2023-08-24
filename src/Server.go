@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/bbk47/toolbox"
+	"github/xuxihai123/go-gwk/v1/src/auth"
+	"github/xuxihai123/go-gwk/v1/src/prepare"
 	"github/xuxihai123/go-gwk/v1/src/transport"
 	"github/xuxihai123/go-gwk/v1/src/tunnel"
 	. "github/xuxihai123/go-gwk/v1/src/types"
@@ -61,12 +63,12 @@ func (servss *Server) handleTcpPipe(worker *tunnel.TunnelStub, listener net.List
 	}
 }
 
-func (servss *Server) handleTcpTunnel(connobj *ConnectObj, tunopts *TunnelOpts) *tunnel.StatusMsg {
+func (servss *Server) handleTcpTunnel(connobj *ConnectObj, tunopts *TunnelOpts) *StatusMsg {
 	//servss.logger.Infof("handle tcp tunnel===>", tunopts)
 	remoteAddr := fmt.Sprintf("%s:%d", "127.0.0.1", tunopts.RemotePort)
 	listener, err := net.Listen("tcp", remoteAddr)
 	if err != nil {
-		return &tunnel.StatusMsg{Status: tunnel.FAIELD, Message: err.Error()}
+		return &StatusMsg{Status: tunnel.FAIELD, Message: err.Error()}
 	}
 
 	// 获取监听的地址和端口号
@@ -76,56 +78,63 @@ func (servss *Server) handleTcpTunnel(connobj *ConnectObj, tunopts *TunnelOpts) 
 	connobj.ln = listener
 
 	msg := fmt.Sprintf("tcp://%s:%d", servss.opts.ServerHost, addr.Port)
-	return &tunnel.StatusMsg{Status: tunnel.OK, Message: msg}
+	return &StatusMsg{Status: tunnel.OK, Message: msg}
 }
 
-func (servss *Server) handleWebTunnel(connobj *ConnectObj, tunopts *TunnelOpts) *tunnel.StatusMsg {
+func (servss *Server) handleWebTunnel(connobj *ConnectObj, tunopts *TunnelOpts) *StatusMsg {
 	//servss.logger.Infof("handle web tunnel===>", tunopts)
 	fulldomain := fmt.Sprintf("%s.%s", tunopts.Subdomain, servss.opts.ServerHost)
 
 	if servss.webTunnels[fulldomain] != nil {
-		return &tunnel.StatusMsg{Status: tunnel.FAIELD, Message: "subdomain existed!"}
+		return &StatusMsg{Status: tunnel.FAIELD, Message: "subdomain existed!"}
 	}
 	connobj.url = "http://" + fulldomain
 	servss.webTunnels[fulldomain] = connobj
-	return &tunnel.StatusMsg{Status: tunnel.OK, Message: connobj.url}
+	return &StatusMsg{Status: tunnel.OK, Message: connobj.url}
 }
 
 func (servss *Server) handleConnection(conn net.Conn) {
+	defer conn.Close()
+
 	tsport := transport.WrapConn(conn)
-
-	tunnelworker := tunnel.NewTunnelStub(tsport)
-	connobj := &ConnectObj{tunnel: tunnelworker, rtt: 0, uid: utils.GetUUID()}
-
-	tunnelworker.RegisterAuth(func(authstr string) *tunnel.StatusMsg {
+	err := auth.HandleAuthRes(tsport, func(authstr string) *StatusMsg {
 		fmt.Println("hand auth===>", authstr)
 		if authstr == "test:test123" {
-			return &tunnel.StatusMsg{Status: tunnel.OK, Message: "success"}
+			return &StatusMsg{Status: tunnel.OK, Message: "success"}
 		} else {
-			return &tunnel.StatusMsg{Status: tunnel.FAIELD, Message: "user/pass error!"}
+			return &StatusMsg{Status: tunnel.FAIELD, Message: "user/pass error!"}
 		}
 	})
 
-	tunnelworker.RegisterReqTun(func(tunops *TunnelOpts) *tunnel.StatusMsg {
-		tunopsstr, _ := json.Marshal(tunops)
+	if err != nil {
+		return
+	}
+	connobj := &ConnectObj{rtt: 0, uid: utils.GetUUID()}
+
+	err = prepare.HandleTunnelRes(tsport, func(tunopts *TunnelOpts) *StatusMsg {
+		tunopsstr, _ := json.Marshal(tunopts)
 		fmt.Println("tunopts:", string(tunopsstr))
-		connobj.tunopts = tunops
-		if tunops.Type == "tcp" {
-			return servss.handleTcpTunnel(connobj, tunops)
+		connobj.tunopts = tunopts
+		if tunopts.Type == "tcp" {
+			return servss.handleTcpTunnel(connobj, tunopts)
 		} else {
-			return servss.handleWebTunnel(connobj, tunops)
+			return servss.handleWebTunnel(connobj, tunopts)
 		}
 	})
 
-	tunnelworker.DoWork()
+	if err != nil {
+		return
+	}
+
+	tunnelworker := tunnel.NewTunnelStub(tsport)
 	tunnelworker.AwaitClose()
 	//fmt.Println("clear =====>")
 	// clear
 	_ = conn.Close()
 	servss.rlock.Lock()
 	defer servss.rlock.Unlock()
-
 	delete(servss.connections, connobj.uid)
+
 	if connobj.tunopts == nil {
 		return
 	}

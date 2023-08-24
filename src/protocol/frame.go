@@ -2,10 +2,6 @@ package protocol
 
 import (
 	"encoding/hex"
-	"errors"
-	"fmt"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -35,7 +31,6 @@ const (
  * |<--type[1]-->|--status(1)--|<------auth token(32)------>|
  * |----- 1 -----|-----1/2-----|--------------s2------------|
  *
-
  *
  * @param {*} TUNNEL_REQ frame
  * |<--type[1]-->|----pro----|----port/subdomain----|
@@ -74,46 +69,15 @@ const (
  */
 
 type Frame struct {
-	Type   uint8
-	Token  string
-	Status uint8
-	Stime  string
-	Atime  string
-	// tunnel req/res
-	TunType   uint8
-	Port      uint16
-	Subdomain string
-	Name      string
-
-	Message string
-
+	Type     uint8
+	Stime    string
+	Atime    string
 	StreamID string
 	Data     []byte
 }
 
 func Encode(frame *Frame) []byte {
-	if frame.Type == AUTH_REQ || frame.Type == AUTH_RES {
-		prefix := []byte{frame.Type, frame.Status}
-		token := []byte(frame.Token)
-		return append(prefix, token...)
-	} else if frame.Type == TUNNEL_REQ {
-
-		var message string
-		if frame.TunType == 0x1 {
-			message = fmt.Sprintf("%s:%d", frame.Name, frame.Port)
-		} else {
-			message = fmt.Sprintf("%s:%s", frame.Name, frame.Subdomain)
-		}
-
-		prefix := []byte{frame.Type, frame.TunType}
-
-		return append(prefix, []byte(message)...)
-	} else if frame.Type == TUNNEL_RES {
-		prefix := []byte{frame.Type, frame.Status}
-
-		messageBuf := []byte(frame.Message)
-		return append(prefix, messageBuf...)
-	} else if frame.Type == PING_FRAME {
+	if frame.Type == PING_FRAME {
 		prefix := []byte{frame.Type}
 		stime := []byte(frame.Stime)
 		return append(prefix, stime...)
@@ -138,14 +102,7 @@ func Encode(frame *Frame) []byte {
 func Decode(data []byte) (frame *Frame, err error) {
 	typeVal := data[0]
 
-	if typeVal == AUTH_REQ || typeVal == AUTH_RES {
-		token := string(data[2:])
-		status := uint8(0)
-		if typeVal == AUTH_RES {
-			status = data[1]
-		}
-		return &Frame{Type: typeVal, Status: status, Token: token}, nil
-	} else if typeVal == PING_FRAME {
+	if typeVal == PING_FRAME {
 		stime := string(data[1:14])
 
 		return &Frame{Type: typeVal, Stime: stime}, nil
@@ -153,28 +110,6 @@ func Decode(data []byte) (frame *Frame, err error) {
 		stime := string(data[1:14])
 		atime := string(data[14:27])
 		return &Frame{Type: typeVal, Stime: stime, Atime: atime}, nil
-	} else if typeVal == TUNNEL_REQ {
-		proto := data[1]
-		message := string(data[2:])
-		parts := strings.Split(message, ":")
-		port := uint16(0)
-		subdomain := ""
-		if proto == 0x1 {
-			num, err := strconv.ParseUint(parts[1], 10, 16)
-			if err != nil {
-				fmt.Println("无法转换为 uint16")
-				return nil, errors.New("无法转换为 uint16")
-			}
-			uint16Val := uint16(num)
-			port = uint16Val
-		} else {
-			subdomain = parts[1]
-		}
-		return &Frame{Type: typeVal, Name: parts[0], TunType: proto, Port: port, Subdomain: subdomain}, nil
-	} else if typeVal == TUNNEL_RES {
-		status := data[1]
-		message := string(data[2:])
-		return &Frame{Type: typeVal, Status: status, Message: message}, nil
 	} else {
 		streamID := hex.EncodeToString(data[1:17])
 		dataBuf := data[17:]

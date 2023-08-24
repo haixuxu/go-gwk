@@ -42,3 +42,8 @@ type ServerOpts struct {
 	TlsCrt     string `json:"tlsCrt"`
 	TlsKey     string `json:"tlsKey"`
 }
+
+type StatusMsg struct {
+	Status  uint8
+	Message string
+}
