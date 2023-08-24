@@ -142,30 +142,9 @@ func (servss *Server) handleConnection(conn net.Conn) {
 	}
 }
 
-func (servss *Server) initTcpServer() {
-	opts := servss.opts
-
-	address := fmt.Sprintf("%s:%d", "127.0.0.1", opts.TunnelAddr)
-	tcpserver, err := net.Listen("tcp", address)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	servss.logger.Infof("server listen on tcp://127.0.0.1:%d\n", opts.TunnelAddr)
-
-	for {
-		conn, err := tcpserver.Accept()
-		if err != nil {
-			continue
-		}
-		go servss.handleConnection(conn)
-	}
-}
-
 func (servss *Server) handleHttpRequest(conn net.Conn) {
 	defer conn.Close()
 
-	servss.logger.Infof("handle http request==")
 	req, err := utils.ParseHttpHeader(conn)
 	if err != nil {
 		conn.Write([]byte("HTTP/1.1 200 OK\n\n invalid http request\r\n"))
@@ -204,7 +183,29 @@ func (servss *Server) listenSocket(ln net.Listener) {
 	}
 }
 
-func (servss *Server) initHttpsServer() {
+func (servss *Server) initTcpServer(wg *sync.WaitGroup) {
+	defer wg.Done()
+	opts := servss.opts
+
+	address := fmt.Sprintf("%s:%d", "127.0.0.1", opts.TunnelAddr)
+	tcpserver, err := net.Listen("tcp", address)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	servss.logger.Infof("server listen on tcp://127.0.0.1:%d\n", opts.TunnelAddr)
+
+	for {
+		conn, err := tcpserver.Accept()
+		if err != nil {
+			continue
+		}
+		go servss.handleConnection(conn)
+	}
+}
+
+func (servss *Server) initHttpsServer(wg *sync.WaitGroup) {
+	defer wg.Done()
 	listenPort := servss.opts.HttpsAddr
 	address := fmt.Sprintf("%s:%d", "127.0.0.1", listenPort)
 	cer, err := tls.LoadX509KeyPair(servss.opts.TlsCrt, servss.opts.TlsKey)
@@ -220,7 +221,8 @@ func (servss *Server) initHttpsServer() {
 	servss.listenSocket(ln)
 }
 
-func (servss *Server) initHttpServer() {
+func (servss *Server) initHttpServer(wg *sync.WaitGroup) {
+	defer wg.Done()
 	listenPort := servss.opts.HttpAddr
 	address := fmt.Sprintf("%s:%d", "127.0.0.1", listenPort)
 	ln, err := net.Listen("tcp", address)
@@ -236,26 +238,16 @@ func (servss *Server) Bootstrap() {
 	var wg sync.WaitGroup
 
 	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-		servss.initTcpServer()
-	}()
+	go servss.initTcpServer(&wg)
 
 	if opts.HttpAddr != 0 {
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			servss.initHttpServer()
-		}()
+		go servss.initHttpServer(&wg)
 	}
 
 	if opts.HttpsAddr != 0 {
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			servss.initHttpsServer()
-		}()
+		go servss.initHttpsServer(&wg)
 	}
 
 	wg.Wait()
