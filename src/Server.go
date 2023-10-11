@@ -214,13 +214,13 @@ func (servss *Server) initTcpServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	opts := servss.opts
 
-	address := fmt.Sprintf("%s:%d", "127.0.0.1", opts.TunnelAddr)
+	address := fmt.Sprintf("%s:%d", "127.0.0.1", opts.ServerPort)
 	tcpserver, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	servss.logger.Infof("server listen on tcp://127.0.0.1:%d\n", opts.TunnelAddr)
+	servss.logger.Infof("server listen on tcp://127.0.0.1:%d\n", opts.ServerPort)
 
 	for {
 		conn, err := tcpserver.Accept()

@@ -19,8 +19,8 @@ var RootCmd = &cobra.Command{
 
 		cliopts := &types.ClientOpts{
 			LogLevel:   viper.GetString("logLevel"),
-			TunnelHost: viper.GetString("tunnelHost"),
-			TunnelAddr: viper.GetInt("tunnelAddr"),
+			ServerHost: viper.GetString("serverHost"),
+			ServerPort: viper.GetInt("serverPort"),
 			Tunnels:    nil,
 		}
 

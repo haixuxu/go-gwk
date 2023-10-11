@@ -1,6 +1,6 @@
 {
   "serverHost": "gank007.com",
-  "tunnelAddr": 4443,
+  "serverPort": 4443,
   "httpAddr": 8080,
   "httpsAddr": 8043,
   "tlsCA":"./etc/certs/rootCA.crt",

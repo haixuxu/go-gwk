@@ -84,10 +84,10 @@ func (cli *Client) setupTunnel(name string) {
 	// 3. setup stub
 	// 4. listen stream
 	tunopts := cli.opts.Tunnels[name]
-	tunnelHost := cli.opts.TunnelHost
-	tunnelPort := cli.opts.TunnelAddr
+	serverHost := cli.opts.ServerHost
+	tunnelPort := cli.opts.ServerPort
 	cli.updateConsole(tunopts, "connecting stub:"+name)
-	tsport, err := transport.NewTcpTransport(tunnelHost, strconv.Itoa(tunnelPort))
+	tsport, err := transport.NewTcpTransport(serverHost, strconv.Itoa(tunnelPort))
 	if err != nil {
 		//fmt.Println(err)
 		cli.updateConsole(tunopts, "connect:"+err.Error())

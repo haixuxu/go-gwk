@@ -22,3 +22,4 @@ go.work
 
 etc/certs
 .DS_Store
+release

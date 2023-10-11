@@ -2,8 +2,8 @@ package types
 
 type ClientOpts struct {
 	LogLevel   string                 `json:"logLevel"`
-	TunnelHost string                 `json:"tunnelHost"`
-	TunnelAddr int                    `json:"tunnelAddr"`
+	ServerHost string                 `json:"serverHost"`
+	ServerPort int                    `json:"serverPort"`
 	Tunnels    map[string]*TunnelOpts `json:"tunnels"`
 }
 
@@ -35,7 +35,7 @@ func (tunopts *TunnelOpts) GetTypeNo() uint8 {
 type ServerOpts struct {
 	LogLevel   string `json:"logLevel"`
 	ServerHost string `json:"serverHost"`
-	TunnelAddr int    `json:"tunnelAddr"`
+	ServerPort int    `json:"serverPort"`
 	HttpAddr   int    `json:"httpAddr"`
 	HttpsAddr  int    `json:"httpsAddr"`
 	TlsCA      string `json:"tlsCA"`

@@ -19,7 +19,7 @@ var RootCmd = &cobra.Command{
 
 		servopts := &types.ServerOpts{
 			ServerHost: viper.GetString("serverHost"),
-			TunnelAddr: viper.GetInt("tunnelAddr"),
+			ServerPort: viper.GetInt("serverPort"),
 			LogLevel:   viper.GetString("logLevel"),
 			HttpAddr:   viper.GetInt("httpAddr"),
 			HttpsAddr:  viper.GetInt("httpsAddr"),
