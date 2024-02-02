@@ -6,10 +6,13 @@ import (
 	"github.com/spf13/viper"
 	gwk "github/xuxihai123/go-gwk/v1/src"
 	"github/xuxihai123/go-gwk/v1/src/types"
+	utils "github/xuxihai123/go-gwk/v1/src/utils"
 	"os"
 )
 
 var cfgFile string
+var port float64
+var subdomain string
 
 var RootCmd = &cobra.Command{
 	Use: "gwk",
@@ -24,7 +27,29 @@ var RootCmd = &cobra.Command{
 			Tunnels:    nil,
 		}
 
-		tunnels := viper.Get("tunnels").(map[string]interface{})
+		if cliopts.ServerHost == "" {
+			cliopts.ServerHost = "gank.75cos.com"
+			cliopts.ServerPort = 4443
+		}
+
+		tunnels1 := viper.Get("tunnels")
+		var tunnels map[string]interface{}
+		if tunnels1 == nil {
+			if port > 65534 || port < 1024 {
+				fmt.Println("invalid local port", port)
+				os.Exit(1)
+			}
+			tunnels = make(map[string]interface{})
+			tunobj := make(map[string]interface{})
+			if subdomain == "" {
+				subdomain = utils.GenSubdomain()
+			}
+			tunobj["subdomain"] = subdomain
+			tunobj["localport"] = port
+			tunnels["unamed"] = tunobj
+		} else {
+			tunnels = tunnels1.(map[string]interface{})
+		}
 
 		tunnelDict := make(map[string]*types.TunnelOpts)
 		for key, value := range tunnels {
@@ -69,6 +94,8 @@ func init() {
 	RootCmd.AddCommand(versionCmd)
 	cobra.OnInitialize(initConfig)
 	RootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "--config client.json")
+	RootCmd.Flags().Float64VarP(&port, "port", "p", 8080, "set web tunnel local port")
+	RootCmd.Flags().StringVarP(&subdomain, "subdomain", "s", "", "set web tunnel subdomain")
 }
 
 func initConfig() {
