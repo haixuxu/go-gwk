@@ -1,5 +1,5 @@
 {
-  "serverHost":"127.0.0.1",
+  "serverHost":"gank.75cos.com",
   "serverPort":4443,
   "tunnels":{
     "tcp001":{

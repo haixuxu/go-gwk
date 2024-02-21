@@ -2,12 +2,20 @@ package main
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	gwk "github/xuxihai123/go-gwk/v1/src"
 	"github/xuxihai123/go-gwk/v1/src/types"
 	utils "github/xuxihai123/go-gwk/v1/src/utils"
 	"os"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+var (
+	// 版本号
+	Version = "1.0.0"
+	// Git提交哈希
+	GitCommitHash = "none"
 )
 
 var cfgFile string
@@ -86,7 +94,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of gwk",
 	Long:  `All software has versions. This is xuxihai's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("gwk release v0.0.1 -- HEAD")
+		fmt.Printf("gwkd release %s-%s\n", Version, GitCommitHash)
 	},
 }
 
