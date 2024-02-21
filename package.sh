@@ -13,7 +13,7 @@ mkdir -p ./release
 # os_all='linux windows darwin freebsd'
 # arch_all='386 amd64 arm arm64'
 
-platforms=("windows/amd64" "windows/386" "windows/arm64"  "linux/amd64" "linux/386" "linux/arm64" "darwin/amd64" "darwin/arm64" )
+platforms=("windows/amd64" "windows/386" "windows/arm64"  "linux/amd64" "linux/386" "linux/arm64" "darwin/amd64" "darwin/arm64" "freebsd/amd64" "freebsd/386" "freebsd/arm64" )
 
 for platform in "${platforms[@]}"
 do
