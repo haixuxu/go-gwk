@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/bbk47/toolbox"
 	"github/xuxihai123/go-gwk/v1/src/auth"
 	"github/xuxihai123/go-gwk/v1/src/prepare"
 	"github/xuxihai123/go-gwk/v1/src/stub"
@@ -16,6 +15,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/bbk47/toolbox"
 )
 
 type ConnectObj struct {
@@ -99,7 +100,8 @@ func (servss *Server) handleWebTunnel(connobj *ConnectObj, tunopts *TunnelOpts) 
 	}
 	connobj.url = "http://" + fulldomain
 	servss.webTunnels[fulldomain] = connobj
-	return &StatusMsg{Status: stub.OK, Message: connobj.url}
+	url := fmt.Sprintf("http://%s:%d", fulldomain, servss.opts.HttpAddr)
+	return &StatusMsg{Status: stub.OK, Message: url}
 }
 
 func (servss *Server) handleConnection(conn net.Conn) {
