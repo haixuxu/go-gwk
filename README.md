@@ -3,13 +3,13 @@
 Gwk is a tool that helps you expose your local servers or services to the
 internet, even in a private network. It supports both TCP and subdomain modes.
 
-# build
+## build
 
 ```bash
 bash build.sh
 ```
 
-# usage
+## usage
 
 serverHost default is `gank.75cos.com`
 
@@ -18,7 +18,7 @@ serverHost default is `gank.75cos.com`
 gwk
 ```
 
-# client more  example
+## client more  example
 
 ```bash
 # example 2
@@ -29,10 +29,28 @@ gwk  --subdomain testabc001 --port 8000
 gwk  -c client.json
 ```
 
-# client
+## develop 
+
+
+1. generate root CA
 
 ```bash
-go run ./bin/gwk/main.go  -c client.json
+bash ./scripts/gen_rootca.sh
+```
+
+2. generate domain cert
+
+```bash
+bash ./scripts/gen_certbyca.sh
+```
+
+3. move `certs` to `etc` directory
+
+
+## client
+
+```bash
+go run ./bin/gwk/main.go  -c etc/client.json
 ```
 
 client.json
@@ -66,22 +84,24 @@ client.json
 }
 ```
 
-# setup a gwk server
+## setup a gwk server
 
 ```bash
-go run ./bin/gwkd/main.go  -c server.json
+go run ./bin/gwkd/main.go  -c etc/server.json
 ```
 
 server.json
 
 ```json
 {
-  "serverHost": "gwk007.com",
+  "serverHost": "gank007.com",
   "serverPort": 4443,
-  "httpAddr": 80,
-  "httpsAddr": 443,
-  "tlsCA": "./rootCA/rootCA.crt",
-  "tlsCrt": "./cert/my.crt",
-  "tlsKey": "./cert/my.key.pem"
+  "httpAddr": 8080,
+  "httpsAddr": 8043,
+  "tlsCA":"./scripts/certs/rootCA.crt",
+  "tlsCrt":"./scripts/certs/gank007.com/my.crt",
+  "tlsKey":"./scripts/certs/gank007.com/my.key.pem"
 }
+
 ```
+
