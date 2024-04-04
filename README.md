@@ -3,6 +3,10 @@
 Gwk is a tool that helps you expose your local servers or services to the
 internet, even in a private network. It supports both TCP and subdomain modes.
 
+# Download
+
+[Download](https://github.com/xuxihai123/go-gwk/releases)
+
 ## build
 
 ```bash
