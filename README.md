@@ -6,7 +6,7 @@ internet, even in a private network. It supports both TCP and subdomain modes.
 ## build
 
 ```bash
-bash build.sh
+bash package.sh
 ```
 
 ## usage
